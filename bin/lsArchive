@@ -1,0 +1,15 @@
+#!/bin/ksh
+#
+BaseName=$(basename $1)
+PathName=$(dirname $1)
+echo "$BaseName $PathName"
+ArchName=$PathName/archive/$BaseName.`date +"D%C%y%m%d.T%H%M%S"`
+if [[ -e $PathName/archive ]] ;then
+	echo "The original followed by archives:"
+	ls -l $PathName/$BaseName
+	ls -lt $PathName/archive/$BaseName.*
+else 
+	echo "No archive directory exists - so there are no archives"
+	return 1
+fi
+return 0

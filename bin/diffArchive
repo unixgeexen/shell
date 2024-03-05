@@ -1,0 +1,31 @@
+#!/bin/ksh -p
+#
+ScriptRC=0
+InFile=$1
+if [[ -e $InFile ]] ;then
+	BaseName=$(basename $InFile)
+	PathName=$(dirname $InFile)
+	OrigPathName=${PathName%archive}
+	OrigBaseName=${BaseName%.D*.T*}
+	OrigFileName=${OrigPathName}/${OrigBaseName}
+	#print "$InFile $BaseName $PathName $OrigPathName $OrigBaseName"
+	#print "In:$InFile Orig:$OrigFileName"
+	if [[ -e $OrigFileName ]] ;then
+		if [[ $OrigFileName == $InFile ]] ; then
+			for ArchFile in $(ls -1 ${OrigPathName}/archive/${BaseName}.D*.T* | xargs) ; do
+#				print "Debug:$ArchFile:${OrigPathName}/archive/${BaseName}.D*.T*:$InFile:$OrigPathName:$OrigBaseName"
+				print "Status:diff $InFile $ArchFile"
+				diff -wb $InFile $ArchFile
+			done
+		else
+			diff -wb $OrigFileName $InFile
+		fi
+	else
+		print "Error:Orig File $OrigFileName does not exist"
+		ScriptRC=1
+	fi
+else
+	print "Error:Sorry $InFile does not exist"
+	ScriptRC=1
+fi
+exit $ScriptRC

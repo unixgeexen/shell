@@ -1,0 +1,323 @@
+# directory/file search functions
+#  DocDir="~/documentation ~/procedures"
+#  TicketDir="~/tickets"
+#  sf - menu select single item from $__FileSelectFile put into $__FileSelect and array __FileSelectArray
+#  sfm - menu select multiple items from $__FileSelectFile put into $__FileSelect and array __FileSelectArray
+#
+#  sdir - list of files with names or contents matching search parms - tee to $__FileList
+#    gbasename $@ # find files from specified directories with basename matching regex
+#    grepdir $@ # list files with contents matching search parameters
+#  gtickets - select single ticket from list of tickets matching search parms
+#  gticket - generate list of tickets ($TicketDir) matching search parms
+#  gdocs - select single file from $DocDir using search parms
+#  gdoc - generate list of documents matching search parameters 
+#
+#  TODO Determine shell to use and standard ways of running functions
+#  TODO review refactoring of functions e.g. generic generate list either tickets, docs or some other list
+
+# Filesearch Variables
+__FileSelectFile=~/tmp/FileSelectFile
+#DocDir="/share/documentation"
+#TicketDir="~/tickets"
+
+# Filesearch aliases
+## Ticket related functions
+alias ct='find ~/tickets/* -maxdepth 0|egrep -v "done|xfer|cancelled|closed|\.swp$"'
+alias ctw="ct|xargs -n1 -I{} find {} \( -name output -o -name logs \) -prune -o -type f|egrep -v '/logs|/output'|xargs egrep -w 'BLOCK|TODO|INPROGRESS'"
+alias ctf="ct|xargs -n1 -I{} find {} \( -name output -o -name logs \) -prune -o -type f|egrep -v '/logs|/output'"
+alias cts='ct|egrep -i "info|\.adoc"|sf'
+
+## Home directory - sort most recent files, with/without timestamp
+alias cw='find ~ \( -name ".cache" -o -name "output" -o -name ".vim" -o -name "sync" -o -name "archive" -o -name "logs" -o -name "backup" -o -name ".cache" -o -name ".dbus" -o -name ".mozilla" -o -name ".local" \) -prune -o -type f -printf "%T@ %Tc %p\n" |egrep -v "/etc/CmdList|.ssh/environment|.Xauthority|.bash_history|.viminfo|.lesshst"|sort -rn|head -50'
+alias cwf='find ~ \( -name ".cache" -o -name "output" -o -name ".vim" -o -name "sync" -o -name "archive" -o -name "logs" -o -name "backup" -o -name ".cache" -o -name ".dbus" -o -name ".mozilla" -o -name ".local" \) -prune -o -type f -printf "%T@ %Tc %p\n" |egrep -v "/etc/CmdList|.ssh/environment|.Xauthority|.bash_history|.viminfo|.lesshst"|sort -rn|head -50|cut -c53-'
+alias cws='cwf|sf'
+alias cwsm='cwf|sfm'
+
+## List files in selection
+alias lsf='echo "__FileSelect: $__FileSelect";echo "__FileSelectArray";printf "%s\n" "${__FileSelectArray[@]}"'
+alias lsfw='printf "%s\n" $__FileSelect'
+
+## Select files in selection
+alias sfh='select name in "${__FileSelectArray[@]}"; do [[ -n $name ]] && __FileSelect="$name";echo "$__FileSelect"; break; done'
+alias sf='cat > "$__FileSelectFile";unset ItemList;i=0;while read Line ; do ItemList[$i]="$Line";i=$((i+1));done < "$__FileSelectFile";if [[ "${#ItemList[*]}" -eq 1 ]] ; then __FileSelect="\"${ItemList[0]}\"" ; else select name in "${ItemList[@]}"; do [[ -n $name ]] && __FileSelect="\"$name\"";echo "$__FileSelect"; break; done; fi;[[ -n $__FileSelect ]] && __FileSelectArray[${#__FileSelectArray[@]}]="$__FileSelect"'
+alias sfm='cat > "$__FileSelectFile";unset ItemList;__FileSelect="";i=0;while read Line ; do ItemList[$i]="$Line";i=$((i+1));done < "$__FileSelectFile";if [[ "${#ItemList[*]}" -eq 1 ]] ; then __FileSelect="\"${ItemList[0]}\"" ; else select name in "${ItemList[@]}" "exit"; do [[ $name == "exit" ]] && break;[[ -n $name ]] && __FileSelect="$__FileSelect \"$name\"";echo "$__FileSelect"; done; fi;[[ -n $__FileSelect ]] && __FileSelectArray[${#__FileSelectArray[@]}]="$__FileSelect"'
+
+
+
+## Actions on file selections
+alias gs='eval grep . $__FileSelect ~/tmp/__empty|egrep -v ":[[:space:]]*$"'
+alias rs='eval rm -i $__FileSelect'
+alias vs='eval vi $__FileSelect'
+alias lss='eval ls -ld $__FileSelect'
+alias fs='eval fileInfo $__FileSelect'
+alias adocs='eval adoc $__FileSelect'
+gsf () {
+        eval egrep $@ $__FileSelect
+}
+
+csf () {
+        eval $@ $__FileSelect
+}
+
+# FileSearch Functions
+
+function sdir {
+	# Search for directory names and filenames matching search parameters
+	OPTIND=1
+	__SetOpts=
+	while getopts :nvx OptName ; do
+		case $OptName in
+			n  )    __SetOpts=${__SetOpts}n;;
+			v  )    __SetOpts=${__SetOpts}v;;
+			x  )    __SetOpts=${__SetOpts}x;;
+			* )     echo "Usage ${FUNCNAME[0]} \"DirList...\" egrepSearch...";return 1;;
+		esac
+	done
+	shift $((OPTIND-1))
+	[[ -n $__SetOpts ]] && set -$__SetOpts
+	if [[ $# -ge 1 ]] ; then
+		eval grepdir $@
+		eval gbasename -i $@
+	else
+		return 1
+	fi|sort -u|tee $__FileList
+	[[ -n $__SetOpts ]] && set +$__SetOpts
+}
+
+function grepdir {
+# Recursive grep of file contents returning list of matching files
+# 	same arguments as grep
+
+	OPTIND=1
+	__SetOpts=
+	while getopts :nvx OptName ; do
+		case $OptName in
+			n  )    __SetOpts=${__SetOpts}n;;
+			v  )    __SetOpts=${__SetOpts}v;;
+			x  )    __SetOpts=${__SetOpts}x;;
+			* )     echo "Usage ${FUNCNAME[0]} \"FileList...\" egrepSearch...  # Recursive grep listing files which match";return 1;;
+		esac
+	done
+	shift $((OPTIND-1))
+	[[ -n $__SetOpts ]] && set -$__SetOpts
+	if [[ $# -ge 2 ]] ; then
+		eval egrep -iRc $@|gcntclean
+	else
+		return 1
+	fi
+	[[ -n $__SetOpts ]] && set +$__SetOpts
+#		FileList="$1"
+#		shift 1
+#		eval egrep -iRc $@ $FileList|gcntclean
+}
+
+function gbasename {
+# find files from specified directories with basename matching regex
+# Performance enhancements: add egrep after find, use parameter expansion instead of basename
+        OPTIND=1
+        OutputFormat=
+        __SetOpts=
+	typeset -l lcSearchStr
+	typeset -l lcBaseName
+	IgnoreCase=false
+        while getopts :invx OptName ; do
+                case $OptName in
+                        i )     IgnoreCase=true;;
+                        n  )    __SetOpts=${__SetOpts}n;;
+                        v  )    __SetOpts=${__SetOpts}v;;
+                        x  )    __SetOpts=${__SetOpts}x;;
+                        * )     echo "Usage gbasename [-i] Regex DirList";return 1;;
+                esac
+        done
+        shift $((OPTIND-1))
+        [[ -n $__SetOpts ]] && set -$__SetOpts
+	if [[ $# -ge 1 ]] ; then
+		SearchStr="$1"
+		lcSearchStr="$1"
+		shift 1
+		if $IgnoreCase ; then
+			for DirName in $@ ; do
+				eval find $DirName | egrep -i $lcSearchStr|while read FileName ; do
+					lcBaseName=${FileName##*/}
+					[[ "$lcBaseName" =~ $lcSearchStr ]] && echo $FileName
+				done
+			done
+		else
+			for DirName in $@ ; do
+				eval find $DirName |egrep $SearchStr|while read FileName ; do
+					BaseName=${FileName##*/}
+					[[ "$BaseName" =~ $lcSearchStr ]] && echo $FileName
+				done
+			done
+		fi
+	else
+		return 1
+	fi
+        [[ -n $__SetOpts ]] && set +$__SetOpts
+}
+
+function gfilename {
+	# match filenames from specified directories ($1) using serial grep search criteria ($2-)
+        OPTIND=1
+        __SetOpts=
+	IgnoreCase=false
+        while getopts :invx OptName ; do
+                case $OptName in
+                        i )     IgnoreCase=true;;
+                        n  )    __SetOpts=${__SetOpts}n;;
+                        v  )    __SetOpts=${__SetOpts}v;;
+                        x  )    __SetOpts=${__SetOpts}x;;
+                        * )     echo "Usage gbasename [-i] Regex DirList";return 1;;
+                esac
+        done
+        shift $((OPTIND-1))
+        [[ -n $__SetOpts ]] && set -$__SetOpts
+	if [[ $# -gt 1 ]] ; then
+		DirectoryList="$1"
+		shift 1
+		if $IgnoreCase ; then
+			for DirName in $DirectoryList ; do
+				find $DirName 
+			done|grepsi $@
+		else
+			for DirName in $DirectoryList ; do
+				find $DirName 
+			done|greps $@
+		fi
+	else
+		return 1
+	fi
+        [[ -n $__SetOpts ]] && set +$__SetOpts
+}
+
+function gdocs {
+	gdoc "$@"|sf
+}
+
+function gdoc {
+	OPTIND=1
+	OutputFormat=
+	__SetOpts=
+	while getopts :nvx OptName ; do
+		case $OptName in
+			n  )    __SetOpts=${__SetOpts}n;;
+			v  )    __SetOpts=${__SetOpts}v;;
+			x  )    __SetOpts=${__SetOpts}x;;
+			* )     echo "Usage gdoc [-l][-a] SearchExpression";return 1;;
+		esac
+	done
+	shift $((OPTIND-1))
+	[[ -n $__SetOpts ]] && set -$__SetOpts
+	if [[ $# -ge 1 ]] ; then
+		sdir "$1" $DocDir|grep -v 'output/'
+	else
+		return 1
+	fi
+	[[ -n $__SetOpts ]] && set +$__SetOpts
+}
+
+function gtickets {
+	gticket "$@"|sf
+}
+
+function gticket {
+	OPTIND=1
+	OutputFormat=
+	__SetOpts=
+	while getopts :nvx OptName ; do
+		case $OptName in
+			n  )    __SetOpts=${__SetOpts}n;;
+			v  )    __SetOpts=${__SetOpts}v;;
+			x  )    __SetOpts=${__SetOpts}x;;
+			* )     echo "Usage gticket [-l][-a] SearchExpression";return 1;;
+		esac
+	done
+	shift $((OPTIND-1))
+	[[ -n $__SetOpts ]] && set -$__SetOpts
+	if [[ $# -ge 1 ]] ; then
+		sdir "$1" $TicketDir
+	else
+		return 1
+	fi
+	[[ -n $__SetOpts ]] && set +$__SetOpts
+}
+
+adoc ()
+{
+     AsciiDocPgm='python2 /usr/bin/asciidoc'
+     for FileLocation in "$@"; do
+         if [[ -e "$FileLocation" ]]; then
+             OutDir=$(dirname "$FileLocation")/output/
+             OutFile=$(basename "$FileLocation").html
+             [[ -d "$OutDir" ]] || mkdir "$OutDir"
+             $AsciiDocPgm -o ${OutDir}${OutFile} "$FileLocation"
+         else
+             echo "Err:Input file $1 doesn't exist"
+         fi
+     done
+}
+
+# TODO Convert file selection from alias to function for readability
+
+sf.new () {
+	# TODO there appears to be an issue displaying menu from within the function - menu displays but drops straight through
+	# this function implementation is preferable to alias because it's more readable and performance isn't critical because it's a user interactive function
+	cat > "$__FileSelectFile"
+	unset ItemList
+	i=0
+	while read Line ; do
+		ItemList[$i]="$Line"
+		i=$((i+1))
+	done < "$__FileSelectFile"
+	if [[ "${#ItemList[*]}" -eq 1 ]] ; then
+		__FileSelect="${ItemList[0]}"
+	else
+		select name in "${ItemList[@]}" ; do
+			echo "name:$name"
+			if [[ -n $name ]] ; then
+				__FileSelect="$name"
+				echo "$__FileSelect"
+				break
+			fi
+			continue
+		done
+	fi
+	[[ -n $__FileSelect ]] && __FileSelectArray[${#__FileSelectArray[@]}]="$__FileSelect"
+}
+
+sfm.new () {
+	# TODO there appears to be an issue displaying menu from within the function
+	# this function implementation is preferable to alias because it's more readable and performance isn't critical because it's a user interactive function
+	set -vx
+	cat > "$__FileSelectFile"
+	unset ItemList
+	__FileSelect=""
+	AllItems=""
+	i=0
+	while read Line ; do
+		ItemList[$i]="$Line"
+		AllItems="$AllItems $Line"
+		i=$((i+1))
+	done < "$__FileSelectFile"
+	if [[ "${#ItemList[*]}" -eq 1 ]] ; then
+		__FileSelect="${ItemList[0]}"
+#	else select name in "${ItemList[@]}" all exit ; do
+	else
+		select name in "${ItemList[@]}"; do
+#			if [[ $name == "all" ]] ; then
+#				__FileSelect="$AllItems"
+#				echo "$__FileSelect"
+#				break
+#			fi
+#			[[ $name == "exit" ]] && break
+			echo $name
+			if [[ -n $name ]] ; then
+				__FileSelect="$__FileSelect $name"
+			fi
+			echo $__FileSelect
+		done
+		echo "$__FileSelect"
+	fi
+	[[ -n $__FileSelect ]] && __FileSelectArray[${#__FileSelectArray[@]}]="$__FileSelect"
+	set +vx
+}
