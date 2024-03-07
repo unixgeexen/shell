@@ -1,0 +1,21 @@
+#!/bin/ksh
+#
+InFile=$1
+if [[ -e $InFile ]] ;then
+	BaseName=$(basename $InFile)
+	PathName=$(dirname $InFile)
+	OrigPathName=${PathName%archive}
+	OrigBaseName=${BaseName%.D*.T*}
+	OrigFileName=${OrigPathName}/${OrigBaseName}
+	#echo "$InFile $BaseName $PathName $OrigPathName $OrigBaseName"
+	#echo "In:$InFile Orig:$OrigFileName"
+	if [[ -e $OrigFileName ]] ;then
+		#echo "Orig File $OrigFileName exists - replace interactive"
+		cp -ip $InFile $OrigFileName
+	else
+		#echo "Orig File $OrigFileName does not exist - copy"
+		cp -p $InFile $OrigFileName
+	fi
+else
+	echo "Sorry $InFile does not exist"
+fi
